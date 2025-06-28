@@ -1,0 +1,67 @@
+cmake_minimum_required(VERSION 3.14)
+project(my_project)
+
+add_executable(
+  sequence
+  brain.cpp
+  cortex.cpp
+  decay_calculator.cpp
+  decaying_value.cpp
+  hc_channel.cpp
+  hippocampus.cpp
+  sequence_main.cpp
+  neuron.cpp
+  output_state.cpp
+  parameters.cpp
+  sequence_merger.cpp
+  spike_queue.cpp
+  spike_scheduler.cpp
+  token.cpp
+  token_output.cpp
+)
+
+add_executable(
+  codec
+  codec_main.cpp
+  decay_calculator.cpp
+  decaying_value.cpp
+  output_state.cpp
+  parameters.cpp
+  spike_queue.cpp
+  spike_scheduler.cpp
+  token.cpp
+  token_output.cpp
+)
+
+add_executable(
+  predict_self
+  brain.cpp
+  cortex.cpp
+  decay_calculator.cpp
+  decaying_value.cpp
+  hc_channel.cpp
+  hippocampus.cpp
+  neuron.cpp
+  output_state.cpp
+  parameters.cpp
+  predict_self_main.cpp
+  sequence_merger.cpp
+  spike_queue.cpp
+  spike_scheduler.cpp
+  token.cpp
+  token_output.cpp
+)
+
+add_executable(
+  pavlov
+  brain.cpp
+  cortex.cpp
+  decay_calculator.cpp
+  decaying_value.cpp
+  hc_channel.cpp
+  hippocampus.cpp
+  neuron.cpp
+  parameters.cpp
+  pavlov_main.cpp
+  spike_scheduler.cpp
+)
