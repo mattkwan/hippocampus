@@ -238,7 +238,7 @@ int main(int argc, char** argv) {
 
   const Parameters parameters(
       /* MIN_SPIKE_INTERVAL= */ 0.01f,
-      /* SECONDS_PER_SAMPLE= */ 0.5f,
+      /* SECONDS_PER_SAMPLE= */ 0.2f,
       /* SPIKE_FRACTION= */ 0.08f,
       /* DECAY_HALF_LIFE= */ 0.5f,
       /* NEGATIVE_SPIKE_FRACTION= */ 0.08f,
@@ -258,7 +258,7 @@ int main(int argc, char** argv) {
   }
 
   const uint16_t token_id = select_token_id(tokens, randomize);
-  repeat_token(parameters, token_id, 10, randomize, tokens);
+  repeat_token(parameters, token_id, 20, randomize, tokens);
 
   return 0;
 }
