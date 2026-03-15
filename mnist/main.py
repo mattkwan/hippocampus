@@ -11,7 +11,7 @@ def _value_to_spike_times(value: float) -> list[float]:
 
   timestamps = []
   if value > 0:
-    interval = 1.0 / max_spikes_per_second / value 
+    interval = 1.0 / max_spikes_per_second / value
     timestamp = interval * 0.5
     while timestamp < duration:
       timestamps.append(timestamp)
@@ -36,7 +36,7 @@ def _train_brain_single_sample(
     y_value: int
 ):
   """Trains a brain with and single X and Y value."""
-  digits = np.zeros(10)
+  digits = np.zeros(10, dtype=np.float32)
   digits[y_value] = 1.0
 
   values = np.concatenate((digits, mnist.translate_values(x_value)))
@@ -46,10 +46,10 @@ def _train_brain_single_sample(
   learning_channels = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
 
   brain.reset()
-  for timestamp, channel in spikes:
+  for timestamp, channel_id in spikes:
     brain.spike(
         timestamp=timestamp,
-        input_channel=channel,
+        channel_id=channel_id,
         learning_channels=learning_channels)
 
 def _train_brain_all_samples(
@@ -79,21 +79,22 @@ def _evaluate_brain_single_sample(
   If not, the first tuple value is false and the second value indicates whether
   any digit was predicted.
   """
-  values = np.concatenate((np.zeros(10), mnist.translate_values(x_value)))
+  values = np.concatenate(
+      (np.zeros(10, dtype=np.float32), mnist.translate_values(x_value)))
   spikes = _values_to_spikes(values)
 
   # We don't want to create any new neurons.
   learning_channels = set()
 
-  digit_counts = np.zeros(10)
+  digit_counts = np.zeros(10, dtype=np.uint32)
   brain.reset()
-  for timestamp, channel in spikes:
-    output_channels = brain.spike(
+  for timestamp, channel_id in spikes:
+    output_channel_ids = brain.spike(
         timestamp=timestamp,
-        input_channel=channel,
+        channel_id=channel_id,
         learning_channels=learning_channels)
-    for channel in output_channels:
-      digit_counts[channel] += 1
+    for digit_id in output_channel_ids:
+      digit_counts[digit_id] += 1
 
   max_idx = np.argmax(digit_counts)
   if digit_counts[max_idx] == 0:

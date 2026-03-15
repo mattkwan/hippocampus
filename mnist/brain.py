@@ -52,19 +52,10 @@ class DecayingValue:
   def get_value(self, timestamp: float) -> float:
     """
     Returns the value at the specified time.
-    Using the default constructor, the value will usually be in the range
-    [0, 1], but can exceed 1 occasionally.
+    Guaranteed to be in the range [0, 1].
     """
     self._apply_decay(timestamp)
     return self.value
-
-  def get_weight(self, timestamp: float) -> float:
-    """
-    Returns a neuron weight corresponding to the cumulative input.
-    Guaranteed to be in the range [0, 1].
-    """
-    weight = self.get_value(timestamp)
-    return min(weight, 1.0)
 
   def spike(self, timestamp: float):
     """Applies a spike, increasing the value."""
@@ -72,10 +63,7 @@ class DecayingValue:
     self.value += (1 - self.value) * self.spike_fraction
 
   def negative_spike(self, timestamp: float):
-    """
-    Applies a 'negative' spike, decreasing the value.
-    This should reverse the effect of a call to spike().
-    """
+    """Applies a 'negative' spike, decreasing the value."""
     self._apply_decay(timestamp)
     self.value *= 1 - self.spike_fraction
 
@@ -91,21 +79,21 @@ class DecayingValue:
 class Neuron:
   """A spiking neuron."""
 
-  def __init__(self, output_channel: int, weights: list[float]):
+  def __init__(self, channel_id: int, weights: list[float]):
     """
     Constructor for a neuron.
     The weights are normalized so that a value of 1 will activate the neuron.
     """
-    self.output_channel = output_channel
+    self.channel_id = channel_id
     self.activation_level = 0.0
     self.weights = weights
 
-  def spike(self, input_channel: int) -> bool:
+  def spike(self, channel_id: int) -> bool:
     """
     Sends a spike to the specified input channel. Returns true if the spike
     causes the neuron to fire.
     """
-    self.activation_level += self.weights[input_channel]
+    self.activation_level += self.weights[channel_id]
     if self.activation_level >= 1:
       self.activation_level = 0.0
       return True
@@ -116,6 +104,35 @@ class Neuron:
   def reset(self):
     """Resets the activation level of the neuron."""
     self.activation_level = 0.0
+
+class NegativeWeightController:
+  """Maintains a value that can be increased and decreased with spikes."""
+
+  def __init__(self, half_life: float, spike_fraction: float):
+    """Constructor."""
+    self.decaying_value = DecayingValue(half_life, spike_fraction)
+
+  def get_value(self, timestamp: float) -> float:
+    """Returns the value of the negative weight in the range [0, 1]."""
+    return 1 - self.decaying_value.get_value(timestamp)
+
+  def increase(self, timestamp: float):
+    """
+    Increases the negative weight, so the neuron is less likely to fire.
+    Note that we are increasing the value of 1 - decaying_value.
+    """
+    self.decaying_value.negative_spike(timestamp)
+
+  def decrease(self, timestamp: float):
+    """
+    Decreases the negative weight, so the neuron is more likely to fire.
+    Note that we are decreasing the value of 1 - decaying_value.
+    """
+    self.decaying_value.spike(timestamp)
+
+  def reset(self):
+    """Resets the value."""
+    self.decaying_value.reset()
 
 class HCChannel:
   """A channel in a hippocampus that creates new neurons."""
@@ -129,27 +146,25 @@ class HCChannel:
     """Constructor."""
     self.channel_id = channel_id
     self.activation_level = 0.0
-    self.negative_weight_controller = DecayingValue(
+    self.negative_weight_controller = NegativeWeightController(
         negative_weight_half_life, negative_weight_spike_fraction)
-    self.should_create_neuron = False
 
-  def receive_input(self, timestamp: float):
-    """Processes an input spike."""
-    self.negative_weight_controller.spike(timestamp)
+  def encourage(self, timestamp: float):
+    """Makes the channel neuron more likely to fire."""
+    self.negative_weight_controller.decrease(timestamp)
     self.activation_level = 0.0
 
-  def receive_output(self, timestamp: float):
-    """Processes an output spike."""
-    self.negative_weight_controller.negative_spike(timestamp)
+  def inhibit(self, timestamp: float):
+    """Makes the channel neuron less likely to fire."""
+    self.negative_weight_controller.increase(timestamp)
     self.activation_level = 0.0
 
   def activate(self, timestamp: float, weighted_input: float) -> bool:
     """Activates with a weighted spike. Returns true if the neuron fires."""
-    self.activation_level += weighted_input \
-        + self.calculate_negative_weight(timestamp)
+    negative_weight = self.calculate_negative_weight(timestamp)
+    self.activation_level += weighted_input - negative_weight
     if self.activation_level >= 1:  # Causes under-construction neuron to fire.
       self.activation_level = 0.0
-      self.should_create_neuron = True
       return True
 
     self.activation_level = max(self.activation_level, 0.0)
@@ -160,12 +175,11 @@ class HCChannel:
     Returns the negative weight that should be applied to all inputs to an
     under-construction neuron.
     """
-    return self.negative_weight_controller.get_value(timestamp) - 1
+    return self.negative_weight_controller.get_value(timestamp)
 
   def reset(self):
-    """Resets the activation level, fire count, and decay timers."""
+    """Resets the activation level and decay timers."""
     self.activation_level = 0.0
-    self.should_create_neuron = False
     self.negative_weight_controller.reset()
 
 class Hippocampus:
@@ -185,59 +199,62 @@ class Hippocampus:
               parameters['NEGATIVE_WEIGHT_HALF_LIFE'],
               parameters['NEGATIVE_SPIKE_FRACTION']))
 
+  def activate_channel(
+      self,
+      channel: HCChannel,
+      timestamp: float,
+      weighted_input: float
+  ) -> Neuron:
+    """
+    Activates a channel with a weighted input.
+    Returns the neuron, if any, that is created.
+    """
+    new_neuron = None
+    if channel.activate(timestamp, weighted_input):
+      negative_weight = channel.calculate_negative_weight(timestamp)
+      weights = np.empty(len(self.cumulative_inputs), dtype=np.float32)
+      for idx, cumulative_input in enumerate(self.cumulative_inputs):
+        weights[idx] = cumulative_input.get_value(timestamp) - negative_weight
+
+      new_neuron = Neuron(channel.channel_id, weights)
+      channel.reset()
+
+    return new_neuron
+
   def receive_input(
       self,
       timestamp: float,
-      input_channel: int,
+      channel_id: int,
       learning_channels: set[int]=None
-  ):
+  ) -> list[Neuron]:
     """
     Processes a spike on an input channel.
-    Adds newly-created neurons to the cortex.
-    Returns a list of the output channels that fire as a result, and a list of
-    the neurons that are created.
+    Returns a list of the neurons that are created.
     """
-    output_channel_ids = []
     new_neurons = []
 
     # Apply the weighted spike to all the under-construction neurons.
-    weighted_input = self.cumulative_inputs[input_channel].get_weight(timestamp)
+    weighted_input = self.cumulative_inputs[channel_id].get_value(timestamp)
     if weighted_input > 0:
       for channel in self.channels:
-        if learning_channels is not None \
-            and channel.channel_id not in learning_channels:
-          continue
-        if not channel.activate(timestamp, weighted_input):
-          continue
-        output_channel_ids.append(channel.channel_id)
-
-        # Create a new neuron and add it to the return list.
-        if channel.should_create_neuron:
-          negative_weight = channel.calculate_negative_weight(timestamp)
-          weights = []
-          for cumulative_input in self.cumulative_inputs:
-            weights.append(
-                cumulative_input.get_weight(timestamp) + negative_weight)
-
-          weights = np.asarray(weights, dtype=np.float32)
-          new_neurons.append(Neuron(channel.channel_id, weights))
-          channel.reset()
+        if learning_channels is None \
+            or channel.channel_id in learning_channels:
+          neuron = self.activate_channel(channel, timestamp, weighted_input)
+          if neuron:
+            new_neurons.append(neuron)
 
     # Spike the cumulative inputs to update the weight of the input channel.
-    self.cumulative_inputs[input_channel].spike(timestamp)
+    self.cumulative_inputs[channel_id].spike(timestamp)
 
     # Indicate an input on the hippocampus channel.
-    if learning_channels is None or input_channel in learning_channels:
-      self.channels[input_channel].receive_input(timestamp)
+    if learning_channels is None or channel_id in learning_channels:
+      self.channels[channel_id].encourage(timestamp)
 
-    return output_channel_ids, new_neurons
+    return new_neurons
 
-  def receive_output(self, timestamp: float, output_channel: int):
-    """
-    Processes a spike on an output channel.
-    """
-    # Indicate an output on the hippocampus channel.
-    self.channels[output_channel].receive_output(timestamp)
+  def receive_output(self, timestamp: float, channel_id: int):
+    """Processes a spike on an output channel."""
+    self.channels[channel_id].inhibit(timestamp)
 
   def reset(self):
     """Resets the cumulative inputs and channels."""
@@ -253,21 +270,21 @@ class Cortex:
     """Constructor."""
     self.neurons = []
 
-  def spike(self, input_channel: int) -> list[int]:
+  def spike(self, channel_id: int) -> list[int]:
     """
     Sends a spike to the specified input channel.
     Returns a list of the output channels that fire as a result.
     """
     output_channel_ids = []
     for neuron in self.neurons:
-      if neuron.spike(input_channel):
-        output_channel_ids.append(neuron.output_channel)
+      if neuron.spike(channel_id):
+        output_channel_ids.append(neuron.channel_id)
 
     return output_channel_ids
 
-  def add_neurons(self, neurons: list[Neuron]):
-    """Adds a list of neurons to the cortex."""
-    self.neurons.extend(neurons)
+  def add_neuron(self, neuron: Neuron):
+    """Adds a neuron to the cortex."""
+    self.neurons.append(neuron)
 
   def reset(self):
     """Resets the activation level of all the neurons."""
@@ -286,34 +303,31 @@ class Brain:
       self,
       *,
       timestamp: float,
-      input_channel: int,
+      channel_id: int,
       learning_channels: set[int]=None
   ) -> list[int]:
     """
     Sends a spike to the specified input channel.
-    If use_hippocampus is true, learning is enabled. Otherwise only the
+    The hippocampus only learns on the specified channels. Otherwise only the
     cortex is engaged.
     Returns a list of the output channels that fire as a result.
     """
     # Send the spike to the cortex and collect the output spike channels.
-    output_channel_ids = self.cortex.spike(input_channel)
+    output_channel_ids = self.cortex.spike(channel_id)
 
     if learning_channels is None or len(learning_channels) > 0:
       # Activate the under-construction neurons in the hippocampus and collect
       # the outputs. Also add neurons to the cortex if any become permanent.
-      hippocampus_outputs, new_neurons = self.hippocampus.receive_input(
-          timestamp, input_channel, learning_channels)
+      new_neurons = self.hippocampus.receive_input(
+          timestamp, channel_id, learning_channels)
 
-      output_channel_ids.extend(hippocampus_outputs)
-      if learning_channels is None:
-        for channel_id in output_channel_ids:
-          self.hippocampus.receive_output(timestamp, channel_id)
-      else:
-        for channel_id in output_channel_ids:
-          if channel_id in learning_channels:
-            self.hippocampus.receive_output(timestamp, channel_id)
+      for neuron in new_neurons:
+        self.cortex.add_neuron(neuron)
+        output_channel_ids.append(neuron.channel_id)
 
-      self.cortex.add_neurons(new_neurons)
+      for cid in output_channel_ids:
+        if learning_channels is None or cid in learning_channels:
+          self.hippocampus.receive_output(timestamp, cid)
 
     return output_channel_ids
 
@@ -331,9 +345,9 @@ def main():
       'NEGATIVE_WEIGHT_HALF_LIFE': 5.0
   }
   brain = Brain(10, global_parameters)
-  brain.spike(timestamp=0.0, input_channel=3, learning_channels={3})
-  brain.spike(timestamp=0.1, input_channel=3, learning_channels={3})
-  brain.spike(timestamp=0.2, input_channel=3, learning_channels={3})
+  brain.spike(timestamp=0.0, channel_id=3, learning_channels={3})
+  brain.spike(timestamp=0.1, channel_id=3, learning_channels={3})
+  brain.spike(timestamp=0.2, channel_id=3, learning_channels={3})
   brain.reset()
 
 if __name__ == '__main__':
