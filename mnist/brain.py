@@ -231,6 +231,10 @@ class Hippocampus:
     Processes a spike on an input channel.
     Returns a list of the neurons that are created.
     """
+    # Indicate an input on the hippocampus channel.
+    if learning_channels is None or channel_id in learning_channels:
+      self.channels[channel_id].encourage(timestamp)
+
     new_neurons = []
 
     # Apply the weighted spike to all the under-construction neurons.
@@ -245,10 +249,6 @@ class Hippocampus:
 
     # Spike the cumulative inputs to update the weight of the input channel.
     self.cumulative_inputs[channel_id].spike(timestamp)
-
-    # Indicate an input on the hippocampus channel.
-    if learning_channels is None or channel_id in learning_channels:
-      self.channels[channel_id].encourage(timestamp)
 
     return new_neurons
 

@@ -149,9 +149,9 @@ def main(args):
   test_count = args.test_count if args.test_count > 0 else len(test_y)
 
   global_parameters = {
-      'SPIKE_FRACTION': 0.08,
+      'SPIKE_FRACTION': 0.1,
       'DECAY_HALF_LIFE': 10.0,
-      'NEGATIVE_SPIKE_FRACTION': 0.08,
+      'NEGATIVE_SPIKE_FRACTION': 0.06,
       'NEGATIVE_WEIGHT_HALF_LIFE': 10.0
   }
   mnist_size = mnist.translate_values(train_x[0]).size

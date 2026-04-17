@@ -21,10 +21,3 @@ through horizontal and vertical edge detection filters. The positive and
 negative values from each filter are then split into separate arrays and
 downscaled by four (4x4 average pooling). This is similar to the steps carried
 out by a visual cortex.
-
-When trained with these filters, 599 neurons are added to the cortex. It can
-then predict digits with 89.6% accuracy.
-
-In previous tests, it was trained on images downscaled to 14x14 (196 raw
-pixels). The resulting cortex predicted digits with 89.1% accuracy using 1603
-neurons.
