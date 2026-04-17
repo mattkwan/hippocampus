@@ -26,6 +26,9 @@ class Neuron {
     // Returns the neuron's output channel.
     uint16_t get_output_channel() const { return output_channel; }
 
+    // Returns the neuron's weights.
+    const int8_t* get_weights() const { return weights; }
+
     // Sends a spike to the specified input channel. Returns true if the
     // spike causes the neuron to fire.
     bool spike(float timestamp, uint16_t input_channel);

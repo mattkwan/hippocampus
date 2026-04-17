@@ -12,20 +12,20 @@ static void schedule_training_spikes(
     const float food_duration,
     const float food_intensity,
     const Parameters& parameters,
+    const bool randomize_spikes,
     SpikeScheduler* spike_scheduler
 ) {
   // Channels 0-2 are for the bell, 3-5 are for the food.
-  spike_scheduler->schedule_value(0, bell_duration, 0, bell_intensity, true);
-  spike_scheduler->schedule_value(0, bell_duration, 1, bell_intensity, true);
-  spike_scheduler->schedule_value(0, bell_duration, 2, bell_intensity, true);
+  for (unsigned int i = 0; i < 3; i++) {
+    spike_scheduler->schedule_value(
+        0, bell_duration, i, bell_intensity, randomize_spikes);
+  }
 
   const float food_start = bell_duration + gap_duration;
-  spike_scheduler->schedule_value(
-      food_start, food_duration, 3, food_intensity, /* randomize= */ true);
-  spike_scheduler->schedule_value(
-      food_start, food_duration, 4, food_intensity, /* randomize= */ true);
-  spike_scheduler->schedule_value(
-      food_start, food_duration, 5, food_intensity, /* randomize= */ true);
+  for (unsigned int i = 3; i < 6; i++) {
+    spike_scheduler->schedule_value(
+        food_start, food_duration, i, food_intensity, randomize_spikes);
+  }
 }
 
 // Applies the spikes to the brain to train it.
@@ -62,6 +62,7 @@ static void train_brain_pavlovian(
     const float food_duration,
     const float food_intensity,
     const Parameters& parameters,
+    const bool randomize_spikes,
     Brain* brain
 ) {
   SpikeScheduler spike_scheduler(num_channels, parameters);
@@ -72,6 +73,7 @@ static void train_brain_pavlovian(
       food_duration,
       food_intensity,
       parameters,
+      randomize_spikes,
       &spike_scheduler);
   apply_training_spikes(parameters, &spike_scheduler, brain);
 }
@@ -81,12 +83,14 @@ static void schedule_testing_spikes(
     const float bell_duration,
     const float bell_intensity,
     const Parameters& parameters,
+    const bool randomize_spikes,
     SpikeScheduler* spike_scheduler
 ) {
   // Channels 0-2 are for the bell.
-  spike_scheduler->schedule_value(0, bell_duration, 0, bell_intensity, true);
-  spike_scheduler->schedule_value(0, bell_duration, 1, bell_intensity, true);
-  spike_scheduler->schedule_value(0, bell_duration, 2, bell_intensity, true);
+  for (unsigned int i = 0; i < 3; i++) {
+    spike_scheduler->schedule_value(
+        0, bell_duration, i, bell_intensity, randomize_spikes);
+  }
 }
 
 // Applies a "bell" stimulus to the brain and reports how it responds.
@@ -97,6 +101,7 @@ static void apply_testing_spikes(
     Brain* brain
 ) {
   // Apply the scheduled spikes, one at a time.
+  unsigned int spike_count = 0;
   std::vector<uint16_t> outputs;
   for (;;) {
     const ScheduledSpike* scheduled_spike = spike_scheduler->peek_next();
@@ -109,6 +114,7 @@ static void apply_testing_spikes(
         /* use_hippocampus= */ false,
         parameters,
         &outputs);
+    spike_count++;
     spike_scheduler->advance();
   }
 
@@ -120,7 +126,8 @@ static void apply_testing_spikes(
   for (const uint16_t channel : outputs) {
     outputs_count[channel]++;
   }
-  printf("Output spikes with bell input. [0-2] bell, [3-5] food.\n");
+  printf("%u input spikes per bell channel.\n", spike_count / 3);
+  printf("Output spikes: [0-2] bell, [3-5] food, [6-8] unused.\n");
   for (uint16_t i = 0; i < num_channels; i++) {
     printf("%u: %u\n", i, outputs_count[i]);
   }
@@ -132,6 +139,7 @@ static void test_brain_pavlovian(
     const float bell_duration,
     const float bell_intensity,
     const Parameters& parameters,
+    const bool randomize_spikes,
     Brain* brain
 ) {
   SpikeScheduler spike_scheduler(num_channels, parameters);
@@ -139,6 +147,7 @@ static void test_brain_pavlovian(
       bell_duration,
       bell_intensity,
       parameters,
+      randomize_spikes,
       &spike_scheduler);
   apply_testing_spikes(num_channels, parameters, &spike_scheduler, brain);
 }
@@ -152,7 +161,8 @@ static void test_pavlovian_learning(
     const float gap_duration,
     const float food_duration,
     const float food_intensity,
-    const Parameters& parameters
+    const Parameters& parameters,
+    const bool randomize_spikes
 ) {
   Brain brain(num_channels, parameters);
   brain.reserve(num_channels * 100);
@@ -165,32 +175,48 @@ static void test_pavlovian_learning(
       food_duration,
       food_intensity,
       parameters,
+      randomize_spikes,
       &brain);
 
   printf("%u neurons created during training.\n", brain.neuron_count());
+  for (const Neuron& neuron : brain.get_cortex().get_neurons()) {
+    printf("%u:", neuron.get_output_channel());
+    for (unsigned int i = 0; i < num_channels; i++) {
+      printf("%6.2f", neuron.get_weights()[i] / 128.0);
+    }
+    printf("\n");
+  }
+  printf("\n");
+
   brain.reset();
 
   test_brain_pavlovian(
-      num_channels, bell_duration, bell_intensity, parameters, &brain);
+      num_channels,
+      bell_duration,
+      bell_intensity,
+      parameters,
+      randomize_spikes,
+      &brain);
 }
 
 int main(int argc, char** argv) {
   const Parameters parameters(
-      /* MIN_SPIKE_INTERVAL= */ 0.01f,
-      /* SECONDS_PER_SAMPLE= */ 0.5f,
-      /* SPIKE_FRACTION= */ 0.08f,
-      /* DECAY_HALF_LIFE= */ 0.5f,
-      /* NEGATIVE_SPIKE_FRACTION= */ 0.08f,
-      /* NEGATIVE_WEIGHT_HALF_LIFE= */ 5.0f);
+      /* MIN_SPIKE_INTERVAL= */ 0.04f,
+      /* SECONDS_PER_SAMPLE= */ 1.0f,
+      /* SPIKE_FRACTION= */ 0.1f,
+      /* DECAY_HALF_LIFE= */ 2.0f,
+      /* NEGATIVE_SPIKE_FRACTION= */ 0.1f,
+      /* NEGATIVE_WEIGHT_HALF_LIFE= */ 1.0f);
 
   test_pavlovian_learning(
-      /* num_channels= */ 6,
-      /* bell_duration= */ 0.5f,
-      /* bell_intensity= */ 0.7f,
-      /* gap_duration= */ 0.25f,
-      /* food_duration= */ 0.5f,
-      /* food_intensity= */ 0.7f,
-      parameters);
+      /* num_channels= */ 9,
+      /* bell_duration= */ 1.0f,
+      /* bell_intensity= */ 1.0f,
+      /* gap_duration= */ 0.5f,
+      /* food_duration= */ 1.0f,
+      /* food_intensity= */ 1.0f,
+      parameters,
+      /* randomize_spikes= */ false);
 
   return 0;
 }

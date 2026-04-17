@@ -30,6 +30,9 @@ class Cortex {
       neurons.reserve(num_neurons);
     }
 
+    // Returns the list of neurons.
+    const std::vector<Neuron>& get_neurons() const { return neurons; }
+
     // Returns the number of neurons.
     unsigned int neuron_count() const { return neurons.size(); }
 

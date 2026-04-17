@@ -30,6 +30,9 @@ class Brain {
     // Resets the cortex and hippocampus.
     void reset();
 
+    // Returns a reference to the cortex.
+    const Cortex& get_cortex() const { return cortex; }
+
     // Returns the number of neurons in the cortex.
     unsigned int neuron_count() const { return cortex.neuron_count(); }
 

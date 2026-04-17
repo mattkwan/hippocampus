@@ -10,7 +10,7 @@ spikes, then successfully decoded.
 
 Three channels of neuron spikes simulate the ringing of a bell. After a pause,
 three different channels then simulate the arrival of food. These spikes are
-used to train the cortex.
+used to train the cortex. Another three channels are unused.
 
 When the trained cortex is stimulated by the ringing bell, it should output
 both food and bell spikes.
